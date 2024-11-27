@@ -1,42 +1,94 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { User } from './dto/sample.dto';
 import { GetUserDto } from './dto/get-user.dto';
-import * as crypto from 'crypto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AppService {
-  private readonly encryptionKey: Buffer;
-  private readonly ivLength = 16;
+  private readonly saltRounds = 10;
 
   constructor(
     @InjectModel(User.name)
-    private professionalModel: Model<User>,
+    private userModel: Model<User>,
   ) {}
 
-  private async encrypt(text: string): Promise<string> {
-    const iv = crypto.randomBytes(this.ivLength);
-    const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
-    let encrypted = cipher.update(text);
-    encrypted = Buffer.concat([encrypted, cipher.final()]);
-    return iv.toString('hex') + ':' + encrypted.toString('hex');
-  }
-  async save(user: User) {
-    // user.password = await this.encrypt(user.password);
-    return this.professionalModel.create(user);
+  private async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, this.saltRounds);
   }
 
-  async get(getUserDto: GetUserDto) {
-    return this.professionalModel.findOne({ email: getUserDto.email });
+  async save(user: User): Promise<User> {
+    try {
+      user.password = await this.hashPassword(user.password);
+      const newUser = await this.userModel.create(user);
+      return newUser;
+    } catch (error) {
+      throw new Error(`Failed to create user: ${error.message}`);
+    }
   }
 
-  async put(id: string, user: User) {
-    // user.password = await this.encrypt(user.password);
-    return await this.professionalModel.findOneAndUpdate({ _id: id }, user);
+  async getById(id: string): Promise<User> {
+    try {
+      const user = await this.userModel.findById(id);
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+      return user;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to fetch user: ${error.message}`);
+    }
   }
 
-  async delete_user(id: string) {
-    await this.professionalModel.deleteOne({ _id: id });
+  async getByEmail(getUserDto: GetUserDto): Promise<User> {
+    const user = await this.userModel.findOne({ email: getUserDto.email });
+    if (!user) {
+      throw new NotFoundException(
+        `User with email ${getUserDto.email} not found`,
+      );
+    }
+    return user;
+  }
+
+  async put(id: string, user: User): Promise<User> {
+    try {
+      if (user.password) {
+        user.password = await this.hashPassword(user.password);
+      }
+
+      const updatedUser = await this.userModel.findByIdAndUpdate(
+        id,
+        { $set: user },
+        { new: true },
+      );
+
+      if (!updatedUser) {
+        throw new NotFoundException('User not found');
+      }
+
+      return updatedUser;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to update user: ${error.message}`);
+    }
+  }
+
+  async delete_user(id: string): Promise<void> {
+    try {
+      const result = await this.userModel.findByIdAndDelete(id);
+      if (!result) {
+        throw new NotFoundException('User not found');
+      }
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to delete user: ${error.message}`);
+    }
   }
 }
