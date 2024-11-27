@@ -8,7 +8,6 @@ import {
   Param,
   Post,
   Put,
-  ValidationPipe,
 } from '@nestjs/common';
 import { AppService } from './app.service';
 import { User } from './dto/sample.dto';
@@ -19,10 +18,7 @@ export class AppController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createUser(
-    @Body(new ValidationPipe({ whitelist: true }))
-    user: User,
-  ): Promise<User> {
+  async createUser(@Body() user: User): Promise<User> {
     return this.appService.save(user);
   }
 
@@ -34,11 +30,7 @@ export class AppController {
 
   @Put(':id')
   @HttpCode(HttpStatus.OK)
-  async updateUser(
-    @Param('id') id: string,
-    @Body(new ValidationPipe({ whitelist: true }))
-    user: User,
-  ): Promise<User> {
+  async updateUser(@Param('id') id: string, @Body() user: User): Promise<User> {
     return this.appService.put(id, user);
   }
 
